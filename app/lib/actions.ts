@@ -5,9 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
-import { State } from './definitions';
-import { InvoiceFormSchema } from './schemas';
+import { InvoiceState, UserState } from './definitions';
+import { InvoiceFormSchema, UserFormSchema } from './schemas';
+import * as bcrypt from 'bcrypt';
 
+const CreateUser = UserFormSchema.omit({ id: true });
 const CreateInvoice = InvoiceFormSchema.omit({ id: true, date: true });
 const UpdateInvoice = InvoiceFormSchema.omit({ id: true, date: true });
 
@@ -30,7 +32,39 @@ export async function authenticate(
   }
 }
 
-export async function createInvoice(prevState: State, formData: FormData) {
+export async function createUser(prevState: UserState, formData: FormData) {
+  const validatedFields = CreateUser.safeParse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+    password: formData.get('password'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Create User.',
+    };
+  }
+
+  const { name, email, password } = validatedFields.data;
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  try {
+    await sql`
+      INSERT INTO users (name, email, password)
+      VALUES (${name}, ${email}, ${hashedPassword})
+    `;
+  } catch (error) {
+    return {
+      message: 'Database Error: Failed to Create User.',
+    };
+  }
+}
+
+export async function createInvoice(
+  prevState: InvoiceState,
+  formData: FormData,
+) {
   // Validate form using Zod
   const validatedFields = CreateInvoice.safeParse({
     customerId: formData.get('customerId'),
