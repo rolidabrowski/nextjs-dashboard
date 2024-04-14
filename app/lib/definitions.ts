@@ -26,6 +26,15 @@ export type Invoice = {
   status: 'pending' | 'paid';
 };
 
+export type State = {
+  errors?: {
+    customerId?: string[];
+    amount?: string[];
+    status?: string[];
+  };
+  message?: string | null;
+};
+
 export type Revenue = {
   month: string;
   revenue: number;
