@@ -9,7 +9,7 @@ export const UserFormSchema = z.object({
 
 export const InvoiceFormSchema = z.object({
   id: z.number({ invalid_type_error: 'Please select a customer.' }),
-  customerId: z.number(),
+  customerId: z.string(),
   amount: z.coerce
     .number()
     .gt(0, { message: 'Please enter an amount greater than $0.' }),

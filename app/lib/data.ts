@@ -143,19 +143,41 @@ export async function fetchFilteredInvoices(
 
 export async function fetchInvoicesPages(query: string) {
   noStore();
-  try {
-    const count = await sql`SELECT COUNT(*)
-    FROM invoices
-    JOIN customers ON invoices.customer_id = customers.id
-    WHERE
-      customers.name ILIKE ${`%${query}%`} OR
-      customers.email ILIKE ${`%${query}%`} OR
-      invoices.amount::text ILIKE ${`%${query}%`} OR
-      invoices.date::text ILIKE ${`%${query}%`} OR
-      invoices.status ILIKE ${`%${query}%`}
-  `;
 
-    const totalPages = Math.ceil(Number(count.rows[0].count) / ITEMS_PER_PAGE);
+  try {
+    //   const count = await sql`SELECT COUNT(*)
+    //   FROM invoices
+    //   JOIN customers ON invoices.customer_id = customers.id
+    //   WHERE
+    //     customers.name ILIKE ${`%${query}%`} OR
+    //     customers.email ILIKE ${`%${query}%`} OR
+    //     invoices.amount::text ILIKE ${`%${query}%`} OR
+    //     invoices.date::text ILIKE ${`%${query}%`} OR
+    //     invoices.status ILIKE ${`%${query}%`}
+    // `;
+    //   const totalPages = Math.ceil(Number(count.rows[0].count) / ITEMS_PER_PAGE);
+    //   return totalPages;
+
+    const validStatusValues = Object.values(InvoiceStatus);
+    const isStatusValid = validStatusValues.includes(
+      query.toUpperCase() as InvoiceStatus,
+    );
+
+    const whereConditions = [
+      { customer: { name: { contains: query, mode: 'insensitive' } } },
+      { customer: { email: { contains: query, mode: 'insensitive' } } },
+      { amount: { equals: parseInt(query) } },
+      { date: { equals: new Date(query) } },
+      isStatusValid && { status: query.toUpperCase() as InvoiceStatus },
+    ].filter(Boolean) as any[];
+
+    const count = await prisma.invoice.count({
+      where: {
+        OR: whereConditions,
+      },
+    });
+
+    const totalPages = Math.ceil(count / ITEMS_PER_PAGE);
     return totalPages;
   } catch (error) {
     console.error('Database Error:', error);

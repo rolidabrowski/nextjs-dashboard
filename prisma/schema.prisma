@@ -22,19 +22,20 @@ model Invoice {
   date        DateTime                @default(now())
   amount      Int
   status      InvoiceStatus
-  customer    Customer?
+
+  customer     Customer                @relation(fields: [customerId], references: [id])
+  customerId   Int                     @unique
   
   @@map("invoices")
 }
 
 model Customer {
   id          Int                     @id @default(autoincrement())
-  invoice     Invoice                 @relation(fields: [invoiceId], references: [id])
-  invoiceId   Int                     @unique
   name        String
   email       String
   image_url   String
   
+  Invoice    Invoice[]
 
   @@map("customers")
 }
