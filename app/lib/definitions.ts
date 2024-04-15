@@ -9,15 +9,6 @@ export type User = {
   password: string;
 };
 
-export type UserState = {
-  errors?: {
-    name?: string[];
-    email?: string[];
-    password?: string[];
-  };
-  message?: string | null;
-};
-
 export type Customer = {
   id: string;
   name: string;
@@ -35,7 +26,7 @@ export type Invoice = {
   status: 'pending' | 'paid';
 };
 
-export type InvoiceState = {
+export type State = {
   errors?: {
     customerId?: string[];
     amount?: string[];
