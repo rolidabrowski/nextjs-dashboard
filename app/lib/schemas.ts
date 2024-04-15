@@ -1,15 +1,15 @@
 import { z } from 'zod';
 
 export const UserFormSchema = z.object({
-  id: z.string(),
+  id: z.number(),
   name: z.string(),
   email: z.string().email(),
   password: z.string().min(8),
 });
 
 export const InvoiceFormSchema = z.object({
-  id: z.string({ invalid_type_error: 'Please select a customer.' }),
-  customerId: z.string(),
+  id: z.number({ invalid_type_error: 'Please select a customer.' }),
+  customerId: z.number(),
   amount: z.coerce
     .number()
     .gt(0, { message: 'Please enter an amount greater than $0.' }),

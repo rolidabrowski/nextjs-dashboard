@@ -8,7 +8,9 @@ import { AuthError } from 'next-auth';
 import { InvoiceState, UserState } from './definitions';
 import { InvoiceFormSchema, UserFormSchema } from './schemas';
 import * as bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 const CreateUser = UserFormSchema.omit({ id: true });
 const CreateInvoice = InvoiceFormSchema.omit({ id: true, date: true });
 const UpdateInvoice = InvoiceFormSchema.omit({ id: true, date: true });
@@ -65,14 +67,12 @@ export async function createInvoice(
   prevState: InvoiceState,
   formData: FormData,
 ) {
-  // Validate form using Zod
   const validatedFields = CreateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
   });
 
-  // If form validation fails, return errors early. Otherwise, continue.
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
@@ -80,25 +80,29 @@ export async function createInvoice(
     };
   }
 
-  // Prepare data for insertion into the database
   const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
   const date = new Date().toISOString().split('T')[0];
 
-  // Insert data into the database
   try {
-    await sql`
-      INSERT INTO invoices (customer_id, amount, status, date)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
-    `;
+    await prisma.invoice.create({
+      data: {
+        customer: {
+          connect: {
+            id: customerId,
+          },
+        },
+        amount: amountInCents,
+        status: status,
+        date: date,
+      },
+    });
   } catch (error) {
-    // If a database error occurs, return a more specific error.
     return {
       message: 'Database Error: Failed to Create Invoice.',
     };
   }
 
-  // Revalidate the cache for the invoices page and redirect npm run lintthe user.
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
 }

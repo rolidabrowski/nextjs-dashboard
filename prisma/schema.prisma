@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+ 
+datasource db {
+  provider = "postgresql"
+  url = env("POSTGRES_PRISMA_URL") 
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+ 
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+
+  @@map("users")
+}
+
+model Invoice {
+  id          Int                     @id @default(autoincrement())
+  date        DateTime                @default(now())
+  amount      Int
+  status      InvoiceStatus
+  customer    Customer?
+  
+  @@map("invoices")
+}
+
+model Customer {
+  id          Int                     @id @default(autoincrement())
+  invoice     Invoice                 @relation(fields: [invoiceId], references: [id])
+  invoiceId   Int                     @unique
+  name        String
+  email       String
+  image_url   String
+  
+
+  @@map("customers")
+}
+
+model Revenue {
+  id          Int                   @id @default(autoincrement())
+  month       String
+  revenue     Int
+
+  @@map("revenues")
+}
+
+enum InvoiceStatus {
+  pending
+  paid
+}

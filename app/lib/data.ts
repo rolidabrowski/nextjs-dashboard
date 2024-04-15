@@ -3,31 +3,24 @@ import {
   CustomerField,
   CustomersTableType,
   InvoiceForm,
-  InvoicesTable,
-  LatestInvoiceRaw,
   User,
-  Revenue,
 } from './definitions';
 import { formatCurrency } from './utils';
 import { unstable_noStore as noStore } from 'next/cache';
+import { InvoiceStatus, PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export async function fetchRevenue() {
   noStore();
-  // Add noStore() here to prevent the response from being cached.
-  // This is equivalent to in fetch(..., {cache: 'no-store'}).
 
   try {
-    // Artificially delay a response for demo purposes.
-    // Don't do this in production :)
+    const data = await prisma.revenue.findMany();
 
-    // console.log('Fetching revenue data...');
-    // await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    const data = await sql<Revenue>`SELECT * FROM revenue`;
-
-    // console.log('Data fetch completed after 3 seconds.');
-
-    return data.rows;
+    return data.map((revenue) => ({
+      month: revenue.month,
+      revenue: revenue.revenue,
+    }));
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch revenue data.');
@@ -36,15 +29,27 @@ export async function fetchRevenue() {
 
 export async function fetchLatestInvoices() {
   noStore();
-  try {
-    const data = await sql<LatestInvoiceRaw>`
-      SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      ORDER BY invoices.date DESC
-      LIMIT 5`;
 
-    const latestInvoices = data.rows.map((invoice) => ({
+  try {
+    const data = await prisma.invoice.findMany({
+      take: 5,
+      orderBy: {
+        date: 'desc',
+      },
+      select: {
+        amount: true,
+        customer: {
+          select: {
+            name: true,
+            email: true,
+            image_url: true,
+          },
+        },
+        id: true,
+      },
+    });
+
+    const latestInvoices = data.map((invoice) => ({
       ...invoice,
       amount: formatCurrency(invoice.amount),
     }));
@@ -57,27 +62,22 @@ export async function fetchLatestInvoices() {
 
 export async function fetchCardData() {
   noStore();
+
   try {
-    // You can probably combine these into a single SQL query
-    // However, we are intentionally splitting them to demonstrate
-    // how to initialize multiple queries in parallel with JS.
-    const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
-    const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
-    const invoiceStatusPromise = sql`SELECT
-         SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
-         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
-         FROM invoices`;
-
-    const data = await Promise.all([
-      invoiceCountPromise,
-      customerCountPromise,
-      invoiceStatusPromise,
-    ]);
-
-    const numberOfInvoices = Number(data[0].rows[0].count ?? '0');
-    const numberOfCustomers = Number(data[1].rows[0].count ?? '0');
-    const totalPaidInvoices = formatCurrency(data[2].rows[0].paid ?? '0');
-    const totalPendingInvoices = formatCurrency(data[2].rows[0].pending ?? '0');
+    const numberOfCustomers = (await prisma.invoice.count()) ?? '0';
+    const numberOfInvoices = (await prisma.customer.count()) ?? '0';
+    const totalPaidInvoices =
+      (await prisma.invoice.count({
+        where: {
+          status: 'paid',
+        },
+      })) ?? '0';
+    const totalPendingInvoices =
+      (await prisma.invoice.count({
+        where: {
+          status: 'pending',
+        },
+      })) ?? '0';
 
     return {
       numberOfCustomers,
@@ -96,32 +96,45 @@ export async function fetchFilteredInvoices(
   query: string,
   currentPage: number,
 ) {
-  noStore();
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
-    const invoices = await sql<InvoicesTable>`
-      SELECT
-        invoices.id,
-        invoices.amount,
-        invoices.date,
-        invoices.status,
-        customers.name,
-        customers.email,
-        customers.image_url
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      WHERE
-        customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`} OR
-        invoices.amount::text ILIKE ${`%${query}%`} OR
-        invoices.date::text ILIKE ${`%${query}%`} OR
-        invoices.status ILIKE ${`%${query}%`}
-      ORDER BY invoices.date DESC
-      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
-    `;
+    const validStatusValues = Object.values(InvoiceStatus);
+    const isStatusValid = validStatusValues.includes(
+      query.toUpperCase() as InvoiceStatus,
+    );
 
-    return invoices.rows;
+    const whereConditions = [
+      { customer: { name: { contains: query, mode: 'insensitive' } } },
+      { customer: { email: { contains: query, mode: 'insensitive' } } },
+      { amount: { equals: parseInt(query) } },
+      { date: { equals: new Date(query) } },
+      isStatusValid && { status: query.toUpperCase() as InvoiceStatus },
+    ].filter(Boolean) as any[];
+
+    const invoices = await prisma.invoice.findMany({
+      select: {
+        id: true,
+        amount: true,
+        date: true,
+        status: true,
+        customer: {
+          select: {
+            name: true,
+            email: true,
+            image_url: true,
+          },
+        },
+      },
+      where: {
+        OR: whereConditions,
+      },
+      orderBy: { date: 'desc' },
+      take: ITEMS_PER_PAGE,
+      skip: offset,
+    });
+
+    return invoices;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch invoices.');
@@ -165,11 +178,9 @@ export async function fetchInvoiceById(id: string) {
 
     const invoice = data.rows.map((invoice) => ({
       ...invoice,
-      // Convert amount from cents to dollars
       amount: invoice.amount / 100,
     }));
 
-    console.log(invoice); // Invoice is an empty array []
     return invoice[0];
   } catch (error) {
     console.error('Database Error:', error);
